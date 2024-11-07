@@ -638,7 +638,8 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 					continue;
 				}
 
-				if ( isset( $query['tag_name'] ) && $query['tag_name'] !== $this->get_token_name() ) {
+				// @todo uppercase tag_name 1 time, not every loop.
+				if ( isset( $query['tag_name'] ) && strtoupper( $query['tag_name'] ) !== $this->get_token_name() ) {
 					continue;
 				}
 
