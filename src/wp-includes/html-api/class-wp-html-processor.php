@@ -2305,11 +2305,10 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 				if ( $this->state->stack_of_open_elements->has_p_in_button_scope() ) {
 					$this->close_a_p_element();
 				}
-				$current_node = $this->state->stack_of_open_elements->current_node();
+
 				if (
-					$current_node &&
 					in_array(
-						$current_node->node_name,
+						$this->state->stack_of_open_elements->current_node()->node_name,
 						array( 'H1', 'H2', 'H3', 'H4', 'H5', 'H6' ),
 						true
 					)
