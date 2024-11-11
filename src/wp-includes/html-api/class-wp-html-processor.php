@@ -545,7 +545,7 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 		}
 
 		if ( is_string( $query ) ) {
-			$query = array( 'breadcrumbs' => array( $query ) );
+			$query = array( 'tag_name' => $query );
 		}
 
 		if ( ! is_array( $query ) ) {
@@ -555,6 +555,10 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 				'6.4.0'
 			);
 			return false;
+		}
+
+		if ( isset( $query['tag_name'] ) ) {
+			$query['tag_name'] = strtoupper( $query['tag_name'] );
 		}
 
 		$needs_class = ( isset( $query['class_name'] ) && is_string( $query['class_name'] ) )
