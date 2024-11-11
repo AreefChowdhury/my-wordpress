@@ -133,7 +133,7 @@ class Tests_HtmlApi_WpHtmlProcessor extends WP_UnitTestCase {
 
 			// Create a bookmark inside of that stack.
 			if ( null !== $processor->get_attribute( 'two' ) ) {
-				$processor->set_bookmark( 'two' );
+				$this->assertTrue( $processor->set_bookmark( 'two' ) );
 				break;
 			}
 		}
@@ -1019,13 +1019,13 @@ class Tests_HtmlApi_WpHtmlProcessor extends WP_UnitTestCase {
 	}
 
 	/**
-	 * @ticket TBD
+	 * @ticket 62357
 	 */
-	public function test_spawn_fragment_parser_in_foreign_content() {
+	public function test_create_fragment_at_current_node_in_foreign_content() {
 		$processor = WP_HTML_Processor::create_full_parser( '<svg>' );
 		$this->assertTrue( $processor->next_tag( 'SVG' ) );
 
-		$fragment = $processor->spawn_fragment_parser( "\0preceded-by-nul-byte<rect /><circle></circle><foreignobject><div></div></foreignobject><g>" );
+		$fragment = $processor->create_fragment_at_current_node( "\0preceded-by-nul-byte<rect /><circle></circle><foreignobject><div></div></foreignobject><g>" );
 
 		$this->assertSame( 'svg', $fragment->get_namespace() );
 		$this->assertTrue( $fragment->next_token() );
@@ -1047,13 +1047,13 @@ class Tests_HtmlApi_WpHtmlProcessor extends WP_UnitTestCase {
 	}
 
 	/**
-	 * @ticket TBD
+	 * @ticket 62357
 	 */
-	public function test_spawn_fragment_parser_in_foreign_content_integration_point() {
+	public function test_create_fragment_at_current_node_in_foreign_content_integration_point() {
 		$processor = WP_HTML_Processor::create_full_parser( '<svg><foreignObject>' );
 		$this->assertTrue( $processor->next_tag( 'foreignObject' ) );
 
-		$fragment = $processor->spawn_fragment_parser( "<image>\0not-preceded-by-nul-byte<rect />" );
+		$fragment = $processor->create_fragment_at_current_node( "<image>\0not-preceded-by-nul-byte<rect />" );
 
 		// Nothing has been processed, the html namespace should be used for parsing as an integration point.
 		$this->assertSame( 'html', $fragment->get_namespace() );
