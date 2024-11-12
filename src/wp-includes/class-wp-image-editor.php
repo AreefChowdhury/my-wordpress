@@ -431,8 +431,10 @@ abstract class WP_Image_Editor {
 	 */
 	public function generate_filename( $suffix = null, $dest_path = null, $extension = null ) {
 		// $suffix will be appended to the destination filename, just before the extension.
-		if ( ! $suffix ) {
-			$suffix = $this->get_suffix();
+		if ( $suffix ) {
+			$suffix = '-' . $suffix;
+		} elseif ( '' !== $suffix ) {
+			$suffix = '-' . $this->get_suffix();
 		}
 
 		$dir = pathinfo( $this->file, PATHINFO_DIRNAME );
@@ -452,7 +454,7 @@ abstract class WP_Image_Editor {
 			}
 		}
 
-		return trailingslashit( $dir ) . "{$name}-{$suffix}.{$new_ext}";
+		return trailingslashit( $dir ) . "{$name}{$suffix}.{$new_ext}";
 	}
 
 	/**
