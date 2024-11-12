@@ -293,36 +293,26 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 	 * @return static|null The created processor if successful, otherwise null.
 	 */
 	public static function create_fragment( $html, $context = '<body>', $encoding = 'UTF-8' ) {
-		if ( '<body>' !== $context || 'UTF-8' !== $encoding ) {
+		if ( 'UTF-8' !== $encoding ) {
 			return null;
 		}
 
-		$processor                             = new static( $html, self::CONSTRUCTOR_UNLOCK_CODE );
-		$processor->state->context_node        = array( 'BODY', array() );
-		$processor->state->insertion_mode      = WP_HTML_Processor_State::INSERTION_MODE_IN_BODY;
-		$processor->state->encoding            = $encoding;
-		$processor->state->encoding_confidence = 'certain';
+		$context_processor = static::create_full_parser( "<!DOCTYPE html>{$context}" );
+		if ( null === $context_processor ) {
+			return null;
+		}
 
-		// @todo Create "fake" bookmarks for non-existent but implied nodes.
-		$processor->bookmarks['root-node']    = new WP_HTML_Span( 0, 0 );
-		$processor->bookmarks['context-node'] = new WP_HTML_Span( 0, 0 );
+		while ( $context_processor->next_tag() ) {
+			$context_processor->set_bookmark( 'final_node' );
+		}
+		if ( $context_processor->has_bookmark( 'final_node' ) ) {
+			$context_processor->seek( 'final_node' );
+			$processor = $context_processor->create_fragment_at_current_node( $html );
+		}
 
-		$root_node = new WP_HTML_Token(
-			'root-node',
-			'HTML',
-			false
-		);
-
-		$processor->state->stack_of_open_elements->push( $root_node );
-
-		$context_node = new WP_HTML_Token(
-			'context-node',
-			$processor->state->context_node[0],
-			false
-		);
-
-		$processor->context_node = $context_node;
-		$processor->breadcrumbs  = array( 'HTML', $context_node->node_name );
+		if ( ! isset( $processor ) ) {
+			return null;
+		}
 
 		return $processor;
 	}
@@ -422,6 +412,103 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 		$this->release_internal_bookmark_on_destruct = function ( string $name ): void {
 			parent::release_bookmark( $name );
 		};
+	}
+
+	/**
+	 * Creates a fragment processor at the current node.
+	 *
+	 * HTML Fragment parsing always happens with a context node. HTML Fragment Processors can be
+	 * instantiated with a `BODY` context node via `WP_HTML_Processor::create_fragment()`.
+	 *
+	 * The context node may impact how a fragment of HTML is parsed. For example, when parsing
+	 * `<rect />A</rect>B`:
+	 *
+	 * With a BODY context node results in the following tree:
+	 *
+	 *
+	 * @see https://html.spec.whatwg.org/multipage/parsing.html#html-fragment-parsing-algorithm
+	 *
+	 * @param string $html     Input HTML fragment to process.
+	 * @return static|null     The created processor if successful, otherwise null.
+	 */
+	public function create_fragment_at_current_node( string $html ) {
+		if ( $this->get_token_type() !== '#tag' ) {
+			return null;
+		}
+
+		$namespace = $this->current_element->token->namespace;
+
+		/*
+		 * Prevent creating fragments at "self-contained" nodes.
+		 *
+		 * @see https://github.com/WordPress/wordpress-develop/pull/7141
+		 * @see https://github.com/WordPress/wordpress-develop/pull/7198
+		 */
+		if (
+			'html' === $namespace &&
+			in_array( $this->get_tag(), array( 'IFRAME', 'NOEMBED', 'NOFRAMES', 'SCRIPT', 'STYLE', 'TEXTAREA', 'TITLE', 'XMP' ), true )
+		) {
+			return null;
+		}
+
+		$fragment_processor = new static( $html, self::CONSTRUCTOR_UNLOCK_CODE );
+
+		$fragment_processor->compat_mode = $this->compat_mode;
+
+		// @todo Create "fake" bookmarks for non-existent but implied nodes.
+		$fragment_processor->bookmarks['root-node'] = new WP_HTML_Span( 0, 0 );
+		$root_node                                  = new WP_HTML_Token(
+			'root-node',
+			'HTML',
+			false
+		);
+		$fragment_processor->state->stack_of_open_elements->push( $root_node );
+
+		$fragment_processor->bookmarks['context-node']   = new WP_HTML_Span( 0, 0 );
+		$fragment_processor->context_node                = clone $this->current_element->token;
+		$fragment_processor->context_node->bookmark_name = 'context-node';
+		$fragment_processor->context_node->on_destroy    = null;
+
+		$fragment_processor->state->context_node = array( $fragment_processor->context_node->node_name, array() );
+		foreach ( $this->get_attribute_names_with_prefix( '' ) as $name => $value ) {
+			$fragment_processor->state->context_node[1][ $name ] = $value;
+		}
+
+		$fragment_processor->breadcrumbs = array( 'HTML', $fragment_processor->context_node->node_name );
+
+		if ( 'TEMPLATE' === $fragment_processor->context_node->node_name ) {
+			$fragment_processor->state->stack_of_template_insertion_modes[] = WP_HTML_Processor_State::INSERTION_MODE_IN_TEMPLATE;
+		}
+
+		$fragment_processor->reset_insertion_mode_appropriately();
+
+		/*
+		 * > Set the parser's form element pointer to the nearest node to the context element that
+		 * > is a form element (going straight up the ancestor chain, and including the element
+		 * > itself, if it is a form element), if any. (If there is no such form element, the
+		 * > form element pointer keeps its initial value, null.)
+		 */
+		foreach ( $this->state->stack_of_open_elements->walk_up() as $element ) {
+			if ( 'FORM' === $element->node_name && 'html' === $element->namespace ) {
+				$fragment_processor->state->form_element                = clone $element;
+				$fragment_processor->state->form_element->bookmark_name = null;
+				$fragment_processor->state->form_element->on_destroy    = null;
+				break;
+			}
+		}
+
+		$fragment_processor->state->encoding_confidence = 'irrelevant';
+
+		/*
+		 * Updating the parsing namespace near the end of the process.
+		 * This is important so that any push/pop from the stack of open
+		 * elements does not change the parsing namespace.
+		 */
+		$fragment_processor->change_parsing_namespace(
+			$this->current_element->token->integration_node_type ? 'html' : $namespace
+		);
+
+		return $fragment_processor;
 	}
 
 	/**
