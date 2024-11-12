@@ -213,7 +213,7 @@ class Tests_HtmlApi_Html5lib extends WP_UnitTestCase {
 				if ( null !== $parent_processor->get_last_error() ) {
 					throw new Exception( $parent_processor->get_last_error() );
 				}
-				$processor = $parent_processor->spawn_fragment_parser( $html );
+				$processor = $parent_processor->create_fragment_at_current_node( $html );
 			}
 
 			if ( null === $processor ) {
@@ -226,11 +226,6 @@ class Tests_HtmlApi_Html5lib extends WP_UnitTestCase {
 			}
 		}
 
-		/*
-		 * The fragment parser will start in 2 levels deep at: html > body > [position]
-		 * and requires adjustment to initial parameters.
-		 * The full parser will not.
-		 */
 		$output       = '';
 		$indent_level = 0;
 		$was_text     = null;

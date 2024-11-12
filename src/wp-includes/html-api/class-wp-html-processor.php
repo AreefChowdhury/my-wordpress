@@ -428,13 +428,35 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 	 * Creates a fragment processor at the current node.
 	 *
 	 * HTML Fragment parsing always happens with a context node. HTML Fragment Processors can be
-	 * instantiated with a `BODY` context node via `WP_HTML_Processor::create_fragment()`.
+	 * instantiated with a `BODY` context node via `WP_HTML_Processor::create_fragment( $html )`.
 	 *
-	 * The context node may impact how a fragment of HTML is parsed. For example, when parsing
-	 * `<rect />A</rect>B`:
+	 * The context node may impact how a fragment of HTML is parsed. For example, consider the HTML
+	 * fragment `<td />Inside TD?</td>`.
 	 *
 	 * With a BODY context node results in the following tree:
 	 *
+	 *     └─#text Inside TD?
+	 *
+	 * Notice that the `<td>` tags are completely ignored.
+	 *
+	 * Compare that with an SVG context node that produces the following tree:
+	 *
+	 *     ├─svg:td
+	 *     └─#text Inside TD?
+	 *
+	 * Here, a `td` node in the `svg` namespace is created, and its self-closing flag is respected.
+	 * This is a peculiarity of parsing HTML in foreign content like SVG.
+	 *
+	 * Finally, consider the tree produced with a TABLE context node:
+	 *
+	 *     └─TBODY
+	 *       └─TR
+	 *         └─TD
+	 *           └─#text Inside TD?
+	 *
+	 * These examples demonstrate how important the context node may be when processing an HTML
+	 * fragment. Special care must be taken when processing fragments that are expected to appear
+	 * in specific contexts. SVG and TABLE are good examples, but there are others.
 	 *
 	 * @see https://html.spec.whatwg.org/multipage/parsing.html#html-fragment-parsing-algorithm
 	 *
@@ -462,6 +484,9 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 		}
 
 		$fragment_processor = static::create_fragment( $html );
+		if ( null === $fragment_processor ) {
+			return null;
+		}
 
 		$fragment_processor->change_parsing_namespace(
 			$this->current_element->token->integration_node_type ? 'html' : $namespace
@@ -494,7 +519,9 @@ class WP_HTML_Processor extends WP_HTML_Tag_Processor {
 		 */
 		foreach ( $this->state->stack_of_open_elements->walk_up() as $element ) {
 			if ( 'FORM' === $element->node_name && 'html' === $element->namespace ) {
-				$fragment_processor->state->form_element = $element;
+				$fragment_processor->state->form_element                = clone $element;
+				$fragment_processor->state->form_element->bookmark_name = null;
+				$fragment_processor->state->form_element->on_destroy    = null;
 				break;
 			}
 		}
